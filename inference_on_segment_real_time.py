@@ -93,7 +93,7 @@ def main():
     labels = load_label(label_csv)
 
     # Load the audio file
-    audio_path = "./sample_audios/demo_audios4.flac"
+    audio_path = "./sample_audios/demo_audios3.flac"
     waveform, sr = torchaudio.load(audio_path)
     assert sr == 16000, "Input audio sampling rate must be 16kHz"
 

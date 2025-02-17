@@ -7,6 +7,8 @@ import pyaudio
 from collections import deque
 from torch.amp import autocast
 from src.models import ASTModel
+from rich.console import Console
+from rich.table import Table
 
 # ----------------------------
 # Configuration and Constants
@@ -19,6 +21,20 @@ OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
 HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
 MEL_BINS = 128  # Number of Mel filter bank bins
 INPUT_TDIM = 1024  # Time dimension expected by the model
+
+
+console = Console()
+def display_predictions( predictions):
+    table = Table(title=f"Predictions")
+
+    table.add_column("Rank", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Label", style="yellow")
+    table.add_column("Confidence", justify="right", style="green")
+
+    for rank, (label, confidence) in enumerate(predictions, start=1):
+        table.add_row(str(rank), label, f"{confidence:.3f}")
+
+    console.print(table)
 
 
 # ----------------------------
@@ -86,10 +102,11 @@ def predict_segment(segment, model, device, labels):
     output_np = output.cpu().numpy()[0]
     sorted_idxs = np.argsort(output_np)[::-1]
     top_predictions = [(labels[i], output_np[i]) for i in sorted_idxs[:3]]
-    formatted_predictions = " - ".join(
-        f"{label} ({score:.4f})" for label, score in top_predictions
-    )
-    return formatted_predictions
+    # formatted_predictions = " - ".join(
+    #     f"{label} ({score:.4f})" for label, score in top_predictions
+    # )
+
+    return top_predictions
 
 
 # ----------------------------
@@ -161,9 +178,10 @@ def main():
                 segment_tensor = (
                     torch.tensor(segment_np, dtype=torch.float32).unsqueeze(0) / 32768.0
                 )
-                # Get predictions for the segment
+                
                 predictions = predict_segment(segment_tensor, model, device, labels)
-                print("Predictions:", predictions)
+                display_predictions(predictions)
+                # print("Predictions:", predictions)
                 # Remove the oldest samples to maintain an overlap (keep OVERLAP_SIZE samples)
                 for _ in range(HOP_SIZE):
                     audio_buffer.popleft()
