@@ -6,6 +6,24 @@ import time
 from torch.amp import autocast
 from src.models import ASTModel
 
+from rich.console import Console
+from rich.table import Table
+
+
+
+console = Console()
+def display_predictions(segment_number, predictions):
+    table = Table(title=f"Segment {segment_number} Predictions")
+
+    table.add_column("Rank", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Label", style="yellow")
+    table.add_column("Confidence", justify="right", style="green")
+
+    for rank, (label, confidence) in enumerate(predictions, start=1):
+        table.add_row(str(rank), label, f"{confidence:.3f}")
+
+    console.print(table)
+
 
 # Function to extract features from audio
 def make_features(waveform, sr, mel_bins, target_length=1024):
@@ -69,13 +87,13 @@ def main():
     audio_model.load_state_dict(checkpoint)
     audio_model = audio_model.to(torch.device("cuda:0"))
     audio_model.eval()
-
+ 
     # Load labels
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_label(label_csv)
 
     # Load the audio file
-    audio_path = "./sample_audios/large_file2.flac"
+    audio_path = "./sample_audios/demo_audios4.flac"
     waveform, sr = torchaudio.load(audio_path)
     assert sr == 16000, "Input audio sampling rate must be 16kHz"
 
@@ -108,7 +126,6 @@ def main():
         feats_data = feats.expand(1, input_tdim, 128)
         feats_data = feats_data.to(torch.device("cuda:0"))
 
-        # Make predictions
         with torch.no_grad():
             with autocast(device_type="cuda"):
                 output = audio_model.forward(feats_data)
@@ -117,24 +134,22 @@ def main():
         result_output = output.data.cpu().numpy()[0]
         sorted_indexes = np.argsort(result_output)[::-1]
 
-        # Print top predictions for this segment
         top_predictions = [
             (labels[sorted_indexes[j]], result_output[sorted_indexes[j]])
             for j in range(3)
         ]
         formatted_predictions = " - ".join(
-            f"{label} ({confidence:.4f})" for label, confidence in top_predictions
+            f"{label} ({confidence:.3f})" for label, confidence in top_predictions
         )
-        print(f"Segment {i+1}/{num_windows}: {formatted_predictions}")
 
-        # Measure the end time
+        display_predictions(i + 1, top_predictions)
+        
+
         end_time = time.time()
 
-        # Calculate processing time
         processing_time = end_time - start_time
 
-        # Calculate sleep time to simulate real-time processing
-        sleep_time = max(0, window_size_sec - processing_time)
+        sleep_time = max(0, window_size_sec - processing_time - 1)
         time.sleep(sleep_time)
 
 
