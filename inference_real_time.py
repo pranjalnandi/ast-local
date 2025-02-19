@@ -4,26 +4,33 @@ import torch
 import torchaudio
 import numpy as np
 import pyaudio
+import gdown
 from collections import deque
 from torch.amp import autocast
 from src.models import ASTModel
 from rich.console import Console
 from rich.table import Table
+from rich import print
 
 # ----------------------------
 # Configuration and Constants
 # ----------------------------
-SAMPLE_RATE = 16000  # Expected sample rate (16 kHz)
-CHUNK_DURATION = 5  # Window duration (in seconds) for inference
-CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION  # Total samples per segment
-OVERLAP_PERCENT = 0.20  # Overlap between segments (20%)
+INPUT_TDIM = 1024
+LABEL_DIM = 527
+CHECKPOINT_PATH = "./pretrained_models/audio_mdl.pth"
+MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
+TOTAL_PRINTED_PREDICTIONS = 3
+
+SAMPLE_RATE = 16000
+CHUNK_DURATION = 5
+OVERLAP_PERCENT = 0.20
+CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION
 OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
 HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
 MEL_BINS = 128  # Number of Mel filter bank bins
-INPUT_TDIM = 1024  # Time dimension expected by the model
-
 
 console = Console()
+
 def display_predictions( predictions):
     table = Table(title=f"Predictions")
 
@@ -46,6 +53,7 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
     Pads or crops the feature matrix to a fixed target length.
     """
     assert sr == SAMPLE_RATE, "Input audio sampling rate must be 16kHz"
+
     fbank = torchaudio.compliance.kaldi.fbank(
         waveform,
         htk_compat=True,
@@ -63,6 +71,7 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
         fbank = pad(fbank)
     elif p < 0:
         fbank = fbank[:target_length, :]
+    
     # Normalize using constants from training
     fbank = (fbank - (-4.2677393)) / (4.5689974 * 2)
     return fbank
@@ -94,50 +103,53 @@ def predict_segment(segment, model, device, labels):
     feats = make_features(segment, SAMPLE_RATE, MEL_BINS)
     # The model expects input shape [batch, time, frequency]
     feats_data = feats.unsqueeze(0).to(device)
+    
     # Run inference using automatic mixed precision if available
     with torch.no_grad():
         with autocast(device_type="cuda"):
             output = model(feats_data)
             output = torch.sigmoid(output)
+    
     output_np = output.cpu().numpy()[0]
     sorted_idxs = np.argsort(output_np)[::-1]
-    top_predictions = [(labels[i], output_np[i]) for i in sorted_idxs[:3]]
-    # formatted_predictions = " - ".join(
-    #     f"{label} ({score:.4f})" for label, score in top_predictions
-    # )
+
+    top_predictions = [(labels[i], output_np[i]) for i in sorted_idxs[:TOTAL_PRINTED_PREDICTIONS]]
 
     return top_predictions
 
+
+def download_model(model_url, checkpoint_path):
+    if not os.path.exists(checkpoint_path):
+        gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
 
 # ----------------------------
 # Main Real-Time Inference Pipeline
 # ----------------------------
 def main():
-    # Set up model storage directory
-    os.environ["TORCH_HOME"] = "./pretrained_models"
     if not os.path.exists("./pretrained_models"):
         os.mkdir("./pretrained_models")
+    
+    download_model(model_url=MODEL_URL, checkpoint_path=CHECKPOINT_PATH)
 
     # Load the AST model
     ast_model = ASTModel(
-        label_dim=527,
+        label_dim=LABEL_DIM,
         input_tdim=INPUT_TDIM,
         imagenet_pretrain=False,
         audioset_pretrain=False,
     )
-    checkpoint_path = "./pretrained_models/audio_mdl.pth"
-    checkpoint = torch.load(checkpoint_path, map_location="cuda")
+    print(f"[*INFO] Load checkpoint: {CHECKPOINT_PATH}")
+    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cuda")
     model = torch.nn.DataParallel(ast_model, device_ids=[0])
     model.load_state_dict(checkpoint)
-    device = torch.device("cuda:0")
-    model = model.to(device)
+    model = model.to(torch.device("cuda:0"))
     model.eval()
-    print("Model loaded.")
+    print("Model loaded! :boom:")
 
     # Load class labels
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_labels(label_csv)
-    print("Labels loaded.")
+    print("Labels loaded! :boom:")
 
     # Initialize PyAudio and select a valid input device (USB microphone)
     p = pyaudio.PyAudio()
@@ -159,29 +171,26 @@ def main():
     )
 
     print("Listening... Press Ctrl+C to stop.")
-    # Use a deque as a circular buffer to hold CHUNK_SIZE samples
+
     audio_buffer = deque(maxlen=CHUNK_SIZE)
 
     try:
         while True:
-            # Read a chunk of data (HOP_SIZE samples) from the microphone
             data = stream.read(HOP_SIZE, exception_on_overflow=False)
-            # Convert raw bytes to a NumPy array of int16 samples
             samples = np.frombuffer(data, dtype=np.int16)
-            # Append the new samples to the audio buffer
             audio_buffer.extend(samples)
+
             # When we have accumulated enough samples, process this segment
             if len(audio_buffer) >= CHUNK_SIZE:
-                # Convert the deque buffer to a NumPy array and then a tensor
                 segment_np = np.array(audio_buffer, dtype=np.int16)
                 # Normalize to [-1, 1] (16-bit PCM normalization)
                 segment_tensor = (
                     torch.tensor(segment_np, dtype=torch.float32).unsqueeze(0) / 32768.0
                 )
                 
-                predictions = predict_segment(segment_tensor, model, device, labels)
+                predictions = predict_segment(segment_tensor, model, torch.device("cuda:0"), labels)
                 display_predictions(predictions)
-                # print("Predictions:", predictions)
+
                 # Remove the oldest samples to maintain an overlap (keep OVERLAP_SIZE samples)
                 for _ in range(HOP_SIZE):
                     audio_buffer.popleft()

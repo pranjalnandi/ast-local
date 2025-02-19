@@ -17,6 +17,7 @@ LABEL_DIM = 527
 CHECKPOINT_PATH = "./pretrained_models/audio_mdl.pth"
 MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
 TOTAL_PRINTED_PREDICTION = 10
+MEL_BINS = 128  # Number of Mel filter bank bins
 
 console = Console()
 
@@ -137,7 +138,7 @@ def main(audio_file_name: str):
     audio_path = f"./sample_audios/{audio_file_name}"
 
     # Extract features
-    feats = make_features(audio_path, mel_bins=128)
+    feats = make_features(audio_path, mel_bins=MEL_BINS)
     feats_data = feats.expand(1, INPUT_TDIM, 128)
     feats_data = feats_data.to(torch.device("cuda:0"))
 

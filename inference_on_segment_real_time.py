@@ -25,6 +25,8 @@ OVERLAP_PERCENT = 0.20
 CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION
 OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
 HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
+MEL_BINS = 128  # Number of Mel filter bank bins
+
 
 console = Console()
 
@@ -105,10 +107,12 @@ def main(audio_file_name: str):
     audio_model.load_state_dict(checkpoint)
     audio_model = audio_model.to(torch.device("cuda:0"))
     audio_model.eval()
+    print("Model loaded! :boom:")
  
     # Load labels
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_label(label_csv)
+    print("Labels loaded! :boom:")
 
     # Load the audio file
     audio_path = f"./sample_audios/{audio_file_name}"
@@ -134,7 +138,7 @@ def main(audio_file_name: str):
         start_time = time.time()
 
         # Extract features
-        feats = make_features(segment, sr, mel_bins=128)
+        feats = make_features(segment, sr, mel_bins=MEL_BINS)
         feats_data = feats.expand(1, INPUT_TDIM, 128)
         feats_data = feats_data.to(torch.device("cuda:0"))
 
