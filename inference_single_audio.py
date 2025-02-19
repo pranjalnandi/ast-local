@@ -7,6 +7,8 @@ from torch.amp import autocast
 import gdown
 from rich.console import Console
 from rich.table import Table
+import typer
+from rich import print
 
 from src.models import ASTModel
 
@@ -21,11 +23,14 @@ console = Console()
 
 def display_predictions(predictions):
     table = Table(title="Predictions (Single Audio)")
+
     table.add_column("Rank", justify="center", style="cyan", no_wrap=True)
     table.add_column("Label", style="yellow")
     table.add_column("Confidence", justify="right", style="green")
+
     for rank, (label, confidence) in enumerate(predictions, start=1):
         table.add_row(str(rank), label, f"{confidence:.3f}")
+    
     console.print(table)
 
 
@@ -105,7 +110,7 @@ def download_model(model_url, checkpoint_path):
         gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
 
 
-def main():
+def main(audio_file_name: str):
     if not os.path.exists("./pretrained_models"):
         os.mkdir("./pretrained_models")
 
@@ -129,7 +134,7 @@ def main():
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_label(label_csv)
 
-    audio_path = "./sample_audios/scream_2.flac"
+    audio_path = f"./sample_audios/{audio_file_name}"
 
     # Extract features
     feats = make_features(audio_path, mel_bins=128)
@@ -154,4 +159,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)

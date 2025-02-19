@@ -5,13 +5,29 @@ import numpy as np
 import time
 from torch.amp import autocast
 from src.models import ASTModel
+import csv
+import typer
+import gdown
 
 from rich.console import Console
 from rich.table import Table
+from rich import print
 
+INPUT_TDIM = 1024
+LABEL_DIM = 527
+CHECKPOINT_PATH = "./pretrained_models/audio_mdl.pth"
+MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
+TOTAL_PRINTED_PREDICTION = 3
 
+SAMPLE_RATE = 16000
+CHUNK_DURATION = 5
+OVERLAP_PERCENT = 0.20
+CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION
+OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
+HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
 
 console = Console()
+
 def display_predictions(segment_number, predictions):
     table = Table(title=f"Segment {segment_number} Predictions")
 
@@ -51,8 +67,6 @@ def make_features(waveform, sr, mel_bins, target_length=1024):
 
 # Function to load labels from a CSV file
 def load_label(label_csv):
-    import csv
-
     with open(label_csv, "r") as f:
         reader = csv.reader(f, delimiter=",")
         lines = list(reader)
@@ -66,23 +80,27 @@ def load_label(label_csv):
     return labels
 
 
+def download_model(model_url, checkpoint_path):
+    if not os.path.exists(checkpoint_path):
+        gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
+
+
 # Main function
-def main():
-    # Set environment variables
-    os.environ["TORCH_HOME"] = "./pretrained_models"
+def main(audio_file_name: str):
     if not os.path.exists("./pretrained_models"):
         os.mkdir("./pretrained_models")
 
+    download_model(model_url=MODEL_URL, checkpoint_path=CHECKPOINT_PATH)
+
     # Load the model
-    input_tdim = 1024
     ast_mdl = ASTModel(
-        label_dim=527,
-        input_tdim=input_tdim,
+        label_dim=LABEL_DIM,
+        input_tdim=INPUT_TDIM,
         imagenet_pretrain=False,
         audioset_pretrain=False,
     )
-    checkpoint_path = "./pretrained_models/audio_mdl.pth"
-    checkpoint = torch.load(checkpoint_path, map_location="cuda")
+    print(f"[*INFO] Load checkpoint: {CHECKPOINT_PATH}")
+    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cuda")
     audio_model = torch.nn.DataParallel(ast_mdl, device_ids=[0])
     audio_model.load_state_dict(checkpoint)
     audio_model = audio_model.to(torch.device("cuda:0"))
@@ -93,29 +111,23 @@ def main():
     labels = load_label(label_csv)
 
     # Load the audio file
-    audio_path = "./sample_audios/demo_audios3.flac"
+    audio_path = f"./sample_audios/{audio_file_name}"
+
     waveform, sr = torchaudio.load(audio_path)
     assert sr == 16000, "Input audio sampling rate must be 16kHz"
 
-    # Define windowing parameters
-    window_size_sec = 5
-    overlap_percent = 0.20  # 20% overlap
-    window_size_samples = int(window_size_sec * sr)
-    overlap_samples = int(overlap_percent * window_size_samples)
-    hop_size_samples = window_size_samples - overlap_samples
-
     # Process the audio in windows
-    num_windows = (waveform.size(1) - overlap_samples) // hop_size_samples
+    num_windows = (waveform.size(1) - OVERLAP_SIZE) // HOP_SIZE
     print(f"Processing {num_windows} windows of audio")
 
     for i in range(num_windows):
-        start = i * hop_size_samples
-        end = start + window_size_samples
+        start = i * HOP_SIZE
+        end = start + CHUNK_SIZE
         segment = waveform[:, start:end]
 
         # Ensure the segment is the correct length
-        if segment.size(1) < window_size_samples:
-            padding = window_size_samples - segment.size(1)
+        if segment.size(1) < CHUNK_SIZE:
+            padding = CHUNK_SIZE - segment.size(1)
             segment = torch.nn.functional.pad(segment, (0, padding))
 
         # Measure the start time
@@ -123,7 +135,7 @@ def main():
 
         # Extract features
         feats = make_features(segment, sr, mel_bins=128)
-        feats_data = feats.expand(1, input_tdim, 128)
+        feats_data = feats.expand(1, INPUT_TDIM, 128)
         feats_data = feats_data.to(torch.device("cuda:0"))
 
         with torch.no_grad():
@@ -136,11 +148,8 @@ def main():
 
         top_predictions = [
             (labels[sorted_indexes[j]], result_output[sorted_indexes[j]])
-            for j in range(3)
+            for j in range(TOTAL_PRINTED_PREDICTION)
         ]
-        formatted_predictions = " - ".join(
-            f"{label} ({confidence:.3f})" for label, confidence in top_predictions
-        )
 
         display_predictions(i + 1, top_predictions)
         
@@ -149,9 +158,9 @@ def main():
 
         processing_time = end_time - start_time
 
-        sleep_time = max(0, window_size_sec - processing_time - 1)
+        sleep_time = max(0, CHUNK_DURATION - processing_time - 1)
         time.sleep(sleep_time)
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
