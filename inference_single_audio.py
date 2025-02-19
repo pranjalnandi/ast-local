@@ -1,26 +1,32 @@
 import os
-import sys
 import csv
 import torch
 import torchaudio
 import numpy as np
 from torch.amp import autocast
 import gdown
+from rich.console import Console
+from rich.table import Table
+
 from src.models import ASTModel
-import time
+
+INPUT_TDIM = 1024
+LABEL_DIM = 527
+CHECKPOINT_PATH = "./pretrained_models/audio_mdl.pth"
+MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
+TOTAL_PRINTED_PREDICTION = 10
+
+console = Console()
 
 
-# Function to set up the environment
-def setup_environment():
-    # Clone the repository if it doesn't exist
-    if not os.path.exists("ast"):
-        os.system("git clone https://github.com/YuanGongND/ast")
-    sys.path.append("./ast")
-    os.chdir("./ast")
-
-    # Install required packages
-    os.system("pip install timm==0.4.5")
-    os.system("pip install wget")
+def display_predictions(predictions):
+    table = Table(title="Predictions (Single Audio)")
+    table.add_column("Rank", justify="center", style="cyan", no_wrap=True)
+    table.add_column("Label", style="yellow")
+    table.add_column("Confidence", justify="right", style="green")
+    for rank, (label, confidence) in enumerate(predictions, start=1):
+        table.add_row(str(rank), label, f"{confidence:.3f}")
+    console.print(table)
 
 
 # Custom ASTModel for visualization
@@ -94,33 +100,26 @@ def load_label(label_csv):
     return labels
 
 
-# Main function
-def main():
-    # setup_environment()
+def download_model(model_url, checkpoint_path):
+    if not os.path.exists(checkpoint_path):
+        gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
 
-    # Set environment variables
-    os.environ["TORCH_HOME"] = "./pretrained_models"
+
+def main():
     if not os.path.exists("./pretrained_models"):
         os.mkdir("./pretrained_models")
 
-    # Download pretrained model if not already present
-    audioset_mdl_url = (
-        "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
-    )
-    checkpoint_path = "./pretrained_models/audio_mdl.pth"
-    if not os.path.exists(checkpoint_path):
-        gdown.download(audioset_mdl_url, checkpoint_path, quiet=False, fuzzy=True)
+    download_model(model_url=MODEL_URL, checkpoint_path=CHECKPOINT_PATH)
 
-    # Load the model
-    input_tdim = 1024
+    # Load models
     ast_mdl = ASTModelVis(
-        label_dim=527,
-        input_tdim=input_tdim,
+        label_dim=LABEL_DIM,
+        input_tdim=INPUT_TDIM,
         imagenet_pretrain=False,
         audioset_pretrain=False,
     )
-    print(f"[*INFO] Load checkpoint: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location="cuda")
+    print(f"[*INFO] Load checkpoint: {CHECKPOINT_PATH}")
+    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cuda")
     audio_model = torch.nn.DataParallel(ast_mdl, device_ids=[0])
     audio_model.load_state_dict(checkpoint)
     audio_model = audio_model.to(torch.device("cuda:0"))
@@ -130,20 +129,11 @@ def main():
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_label(label_csv)
 
-    # Download sample audio
-    # sample_audio_url = 'https://drive.google.com/file/d/1CSjtMRwx-J3O2qXbaJQHqhCWcM8lov7V/view?usp=drive_link'
-    # if not os.path.exists('./sample_audios'):
-    #     os.mkdir('./sample_audios')
-    # audio_path = './sample_audios/sample_audio.flac'
-    # if os.path.exists(audio_path):
-    #     os.remove(audio_path)
-    # gdown.download(sample_audio_url, audio_path, quiet=False, fuzzy=True)
-
     audio_path = "./sample_audios/scream_2.flac"
 
     # Extract features
     feats = make_features(audio_path, mel_bins=128)
-    feats_data = feats.expand(1, input_tdim, 128)
+    feats_data = feats.expand(1, INPUT_TDIM, 128)
     feats_data = feats_data.to(torch.device("cuda:0"))
 
     # Make predictions
@@ -152,18 +142,15 @@ def main():
             output = audio_model.forward(feats_data)
             output = torch.sigmoid(output)
 
-    # output = torch.sigmoid(output)
     result_output = output.data.cpu().numpy()[0]
     sorted_indexes = np.argsort(result_output)[::-1]
 
-    # Print top 10 predictions
-    print("Predicted results:")
-    for k in range(20):
-        print(
-            "- {}: {:.4f}".format(
-                np.array(labels)[sorted_indexes[k]], result_output[sorted_indexes[k]]
-            )
-        )
+    top_predictions = [
+        (labels[sorted_indexes[j]], result_output[sorted_indexes[j]])
+        for j in range(TOTAL_PRINTED_PREDICTION)
+    ]
+
+    display_predictions(top_predictions)
 
 
 if __name__ == "__main__":
