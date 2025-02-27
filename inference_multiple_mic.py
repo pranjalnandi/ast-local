@@ -132,8 +132,47 @@ def main():
 
     # Initialize PyAudio and open streams for multiple USB microphones.
     # Specify the device indices for your microphones.
-    mic_device_indices = [1, 2]  # <-- Update with your actual device indices
+    # mic_device_indices = [1, 2]  # <-- Update with your actual device indices
+
+
+    # p = pyaudio.PyAudio()
+    # streams = []
+    # for dev_idx in mic_device_indices:
+    #     try:
+    #         info = p.get_device_info_by_index(dev_idx)
+    #         print(f"Using input device {dev_idx}: {info['name']}")
+    #         stream = p.open(
+    #             format=pyaudio.paInt16,
+    #             channels=1,
+    #             rate=SAMPLE_RATE,
+    #             input=True,
+    #             frames_per_buffer=HOP_SIZE,
+    #             input_device_index=dev_idx,
+    #         )
+    #         streams.append(stream)
+    #     except Exception as e:
+    #         print(f"Error opening device {dev_idx}: {e}")
+
+    # Initialize PyAudio
     p = pyaudio.PyAudio()
+
+    # Enumerate all devices and select those that are input devices
+    mic_device_indices = []
+    print("Available input devices:")
+    for i in range(p.get_device_count()):
+        device_info = p.get_device_info_by_index(i)
+        if device_info["maxInputChannels"] > 0:
+            print(f"Device index {i}: {device_info['name']}")
+            # Filter for USB devices; adjust the keyword as needed.
+            if "USB" in device_info["name"]:
+                mic_device_indices.append(i)
+
+    if not mic_device_indices:
+        print("No USB input devices found. Please check your microphone connections.")
+    else:
+        print("Selected device indices:", mic_device_indices)
+
+    # Continue with opening streams for each detected microphone
     streams = []
     for dev_idx in mic_device_indices:
         try:
