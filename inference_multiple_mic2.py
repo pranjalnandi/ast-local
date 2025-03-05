@@ -13,20 +13,21 @@ from rich.table import Table
 # ----------------------------
 # Configuration and Constants
 # ----------------------------
-SAMPLE_RATE = 16000          # Target sample rate for model (16 kHz)
-CHUNK_DURATION = 5           # Window duration (in seconds) for inference
+SAMPLE_RATE = 16000  # Target sample rate for model (16 kHz)
+CHUNK_DURATION = 5  # Window duration (in seconds) for inference
 CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION  # Total samples per segment at 16 kHz
-OVERLAP_PERCENT = 0.20       # Overlap between segments (20%)
+OVERLAP_PERCENT = 0.20  # Overlap between segments (20%)
 OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
 HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
-MEL_BINS = 128               # Number of Mel filter bank bins
-INPUT_TDIM = 1024            # Time dimension expected by the model
+MEL_BINS = 128  # Number of Mel filter bank bins
+INPUT_TDIM = 1024  # Time dimension expected by the model
 
 # READ_DURATION: time (in seconds) for each read from each microphone.
 # We choose a duration such that the resampled chunk length is consistent:
 READ_DURATION = 0.064  # e.g. 0.064 seconds => int(16000*0.064)=1024 samples
 
 console = Console()
+
 
 def display_predictions(predictions):
     table = Table(title="Predictions (Merged Audio)")
@@ -36,6 +37,7 @@ def display_predictions(predictions):
     for rank, (label, confidence) in enumerate(predictions, start=1):
         table.add_row(str(rank), label, f"{confidence:.3f}")
     console.print(table)
+
 
 # ----------------------------
 # Feature Extraction Function
@@ -67,6 +69,7 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
     fbank = (fbank - (-4.2677393)) / (4.5689974 * 2)
     return fbank
 
+
 # ----------------------------
 # Label Loading Function
 # ----------------------------
@@ -79,6 +82,7 @@ def load_labels(label_csv):
         reader = csv.reader(f, delimiter=",")
         lines = list(reader)
     return [line[2] for line in lines[1:]]
+
 
 # ----------------------------
 # Prediction Function
@@ -99,6 +103,7 @@ def predict_segment(segment, model, device, labels):
     sorted_idxs = np.argsort(output_np)[::-1]
     top_predictions = [(labels[i], output_np[i]) for i in sorted_idxs[:3]]
     return top_predictions
+
 
 # ----------------------------
 # Main Real-Time Inference Pipeline
@@ -157,7 +162,9 @@ def main():
             native_rate = int(info["defaultSampleRate"])
             # Determine number of native frames to read for READ_DURATION seconds.
             read_frames = int(native_rate * READ_DURATION)
-            print(f"Using input device {dev_idx}: {info['name']}, native_rate: {native_rate}, read_frames: {read_frames}")
+            print(
+                f"Using input device {dev_idx}: {info['name']}, native_rate: {native_rate}, read_frames: {read_frames}"
+            )
             stream = p.open(
                 format=pyaudio.paInt16,
                 channels=1,
@@ -166,8 +173,9 @@ def main():
                 frames_per_buffer=read_frames,
                 input_device_index=dev_idx,
             )
-            # Create a resampler to convert from native_rate to SAMPLE_RATE (16kHz)
-            resampler = torchaudio.transforms.Resample(orig_freq=native_rate, new_freq=SAMPLE_RATE)
+            resampler = torchaudio.transforms.Resample(
+                orig_freq=native_rate, new_freq=SAMPLE_RATE
+            )
             stream_objects.append((stream, resampler, read_frames))
         except Exception as e:
             print(f"Error opening device {dev_idx}: {e}")
@@ -178,20 +186,21 @@ def main():
 
     print("Listening... Press Ctrl+C to stop.")
 
-    # Use a deque as a circular buffer to hold CHUNK_SIZE samples (at 16kHz) for merged audio
     audio_buffer = deque(maxlen=CHUNK_SIZE)
 
     try:
         while True:
             resampled_chunks = []
-            # For each stream, read native samples, convert, and resample to 16kHz.
-            for (stream, resampler, read_frames) in stream_objects:
+            for stream, resampler, read_frames in stream_objects:
                 try:
                     data = stream.read(read_frames, exception_on_overflow=False)
                     # Convert raw bytes to numpy array of int16
                     native_samples = np.frombuffer(data, dtype=np.int16)
                     # Convert to float tensor normalized in [-1,1]
-                    native_tensor = torch.tensor(native_samples, dtype=torch.float32).unsqueeze(0) / 32768.0
+                    native_tensor = (
+                        torch.tensor(native_samples, dtype=torch.float32).unsqueeze(0)
+                        / 32768.0
+                    )
                     # Resample to 16kHz; expected output length = int(SAMPLE_RATE * READ_DURATION)
                     resampled_tensor = resampler(native_tensor)
                     # Remove channel dimension and convert to numpy array
@@ -201,26 +210,30 @@ def main():
                     print("Error reading from stream:", e)
             if not resampled_chunks:
                 continue
+
             # Merge the resampled chunks by averaging (elementwise)
             # All resampled chunks should have the same length (e.g. 1024 samples)
             merged_chunk = np.mean(resampled_chunks, axis=0).astype(np.float32)
             # Append the merged chunk to the global audio buffer
             audio_buffer.extend(merged_chunk.tolist())
-            # When we've accumulated enough samples, process this segment
+
             if len(audio_buffer) >= CHUNK_SIZE:
                 # Convert the buffer to a numpy array (of floats in [-1,1])
                 segment_np = np.array(audio_buffer, dtype=np.float32)
                 # Create a tensor with shape [1, num_samples] for inference
-                segment_tensor = torch.tensor(segment_np, dtype=torch.float32).unsqueeze(0)
+                segment_tensor = torch.tensor(
+                    segment_np, dtype=torch.float32
+                ).unsqueeze(0)
                 predictions = predict_segment(segment_tensor, model, device, labels)
                 display_predictions(predictions)
+
                 # Remove oldest samples to maintain the desired overlap
                 for _ in range(HOP_SIZE):
                     audio_buffer.popleft()
     except KeyboardInterrupt:
         print("Stopping...")
     finally:
-        for (stream, _, _) in stream_objects:
+        for stream, _, _ in stream_objects:
             stream.stop_stream()
             stream.close()
         p.terminate()

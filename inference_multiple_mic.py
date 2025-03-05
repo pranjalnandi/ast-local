@@ -134,7 +134,6 @@ def main():
     # Specify the device indices for your microphones.
     # mic_device_indices = [1, 2]  # <-- Update with your actual device indices
 
-
     # p = pyaudio.PyAudio()
     # streams = []
     # for dev_idx in mic_device_indices:
