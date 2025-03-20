@@ -15,3 +15,4 @@ src/test_wget.py
 .local_venv/
 src/ast_model.onnx
 /whl_files
+src/*.onnx
