@@ -3,15 +3,15 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 # 1. Create a Python virtual environment using Python 3.10
 echo "Creating Python 3.10 virtual environment..."
-python3.10 -m venv astvenv
+python3 -m venv astvenv
 
 # 2. Activate the virtual environment
 echo "Activating virtual environment..."
 source astvenv/bin/activate
 
 # 3. Upgrade pip to the latest version
-echo "Upgrading pip..."
-pip install --upgrade pip
+# echo "Upgrading pip..."
+# pip install --upgrade pip
 
 # 4. Install libraries from wheel files in the specified directory
 WHEEL_DIR="./whl_files"  # Change this if your .whl files are in a different folder
@@ -27,6 +27,7 @@ else
   echo "Wheel directory '$WHEEL_DIR' does not exist. Skipping wheel installation."
 fi
 
+
 # 5. Install system packages using apt-get
 echo "Installing system packages..."
 sudo apt-get update
@@ -39,5 +40,7 @@ if [ -f "requirements.txt" ]; then
 else
   echo "requirements.txt not found. Skipping installation of requirements.txt packages."
 fi
+
+pip install numpy==1.23.5
 
 echo "Setup completed successfully."
