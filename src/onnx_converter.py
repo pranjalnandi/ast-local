@@ -1,10 +1,25 @@
 import torch
+from models import ASTModel
+from torch.amp import autocast
+import onnx
+import onnxruntime
+import numpy as np
+from collections import OrderedDict
+
+LABEL_DIM = 527
+INPUT_TDIM = 1024
+
+model_path = "../pretrained_models/audio_mdl.pth"
+
+
+def to_numpy(tensor):
+    return (
+        tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
+    )
 
 
 def convert_model_to_onnx(model, onnx_file_path, input_tdim=1024, frequency_bins=128):
     """
-    Convert a PyTorch model (e.g., your ASTModel) to the ONNX format.
-
     Parameters:
       model (torch.nn.Module): The PyTorch model to export.
       onnx_file_path (str): File path to save the ONNX model.
@@ -12,19 +27,22 @@ def convert_model_to_onnx(model, onnx_file_path, input_tdim=1024, frequency_bins
       frequency_bins (int): Number of frequency bins (default: 128).
     """
     model.eval()
-    # Create a dummy input tensor with shape [batch_size, time, frequency]
     dummy_input = torch.randn(1, input_tdim, frequency_bins)
 
-    # Export the model to ONNX
+    with torch.no_grad():
+        with autocast(device_type="cuda"):
+            output = model.forward(dummy_input)
+            torch_out = torch.sigmoid(output)
+
     torch.onnx.export(
-        model,  # The model being exported
-        dummy_input,  # A sample input tensor
-        onnx_file_path,  # Where to save the ONNX model
-        export_params=True,  # Store the trained parameters within the model file
-        opset_version=11,  # ONNX version to export to (adjust if needed)
-        do_constant_folding=True,  # Enable constant folding for optimization
-        input_names=["input"],  # Name of the model input
-        output_names=["output"],  # Name of the model output
+        model,
+        dummy_input,
+        onnx_file_path,
+        export_params=True,
+        opset_version=11,
+        do_constant_folding=True,
+        input_names=["input"],
+        output_names=["output"],
         # dynamic_axes={
         #     "input": {0: "batch_size", 1: "time_dim"},
         #     "output": {0: "batch_size"},
@@ -36,14 +54,38 @@ def convert_model_to_onnx(model, onnx_file_path, input_tdim=1024, frequency_bins
     )
     print(f"Model has been successfully exported to {onnx_file_path}")
 
+    onnx_model = onnx.load(onnx_file_path)
+    onnx.checker.check_model(onnx_model)
 
-# Example usage:
+    ort_session = onnxruntime.InferenceSession(
+        onnx_file_path, providers=["CPUExecutionProvider"]
+    )
+
+    # compute ONNX Runtime output prediction
+    ort_inputs = {ort_session.get_inputs()[0].name: to_numpy(dummy_input)}
+    ort_outs = ort_session.run(None, ort_inputs)
+
+    # compare ONNX Runtime and PyTorch results
+    np.testing.assert_allclose(to_numpy(torch_out), ort_outs[0], rtol=1e-03, atol=1e-05)
+
+    print("Exported model has been tested with ONNXRuntime, and the result looks good!")
+
+
 if __name__ == "__main__":
-    from models import ASTModel  # Ensure this imports your model definition
+    model = ASTModel(
+        label_dim=LABEL_DIM,
+        input_tdim=INPUT_TDIM,
+    )
+    state_dict = torch.load(model_path, map_location=torch.device("cpu"))
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        # Remove 'module.' prefix if present
+        name = k[7:] if k.startswith("module.") else k
+        new_state_dict[name] = v
 
-    # Create an instance of your model with desired parameters.
-    model = ASTModel(input_tdim=1024)
-    # Convert the model to ONNX and save it.
+    model.load_state_dict(new_state_dict)
+    # model.load_state_dict(state_dict)
+
     convert_model_to_onnx(
-        model, "ast_model_time_non_dynamic.onnx", input_tdim=1024, frequency_bins=128
+        model, "ast_model_with_weights.onnx", input_tdim=1024, frequency_bins=128
     )
