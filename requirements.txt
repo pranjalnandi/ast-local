@@ -20,3 +20,4 @@ gdown
 pyaudio
 rich
 typer
+soundfile

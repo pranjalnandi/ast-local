@@ -35,37 +35,6 @@ def display_predictions(predictions):
     console.print(table)
 
 
-# # Custom ASTModel for visualization
-# class ASTModelVis(ASTModel):
-#     def get_att_map(self, block, x):
-#         qkv = block.attn.qkv
-#         num_heads = block.attn.num_heads
-#         scale = block.attn.scale
-#         B, N, C = x.shape
-#         qkv = qkv(x).reshape(B, N, 3, num_heads, C // num_heads).permute(2, 0, 3, 1, 4)
-#         q, k, v = qkv[0], qkv[1], qkv[2]
-#         attn = (q @ k.transpose(-2, -1)) * scale
-#         attn = attn.softmax(dim=-1)
-#         return attn
-
-#     def forward_visualization(self, x):
-#         x = x.unsqueeze(1)
-#         x = x.transpose(2, 3)
-#         B = x.shape[0]
-#         x = self.v.patch_embed(x)
-#         cls_tokens = self.v.cls_token.expand(B, -1, -1)
-#         dist_token = self.v.dist_token.expand(B, -1, -1)
-#         x = torch.cat((cls_tokens, dist_token, x), dim=1)
-#         x = x + self.v.pos_embed
-#         x = self.v.pos_drop(x)
-#         att_list = []
-#         for blk in self.v.blocks:
-#             cur_att = self.get_att_map(blk, x)
-#             att_list.append(cur_att)
-#             x = blk(x)
-#         return att_list
-
-
 # Function to extract features from audio
 def make_features(wav_name, mel_bins, target_length=1024):
     waveform, sr = torchaudio.load(wav_name)

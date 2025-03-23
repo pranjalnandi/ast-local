@@ -5,6 +5,7 @@ import onnx
 import onnxruntime
 import numpy as np
 from collections import OrderedDict
+import time
 
 LABEL_DIM = 527
 INPUT_TDIM = 1024
@@ -31,8 +32,11 @@ def convert_model_to_onnx(model, onnx_file_path, input_tdim=1024, frequency_bins
 
     with torch.no_grad():
         with autocast(device_type="cuda"):
-            output = model.forward(dummy_input)
-            torch_out = torch.sigmoid(output)
+            start = time.time()
+            torch_out = model.forward(dummy_input)
+            end = time.time()
+            print(f"Inference of Pytorch model used {end - start} seconds")
+            # torch_out = torch.sigmoid(output)
 
     torch.onnx.export(
         model,
@@ -63,7 +67,10 @@ def convert_model_to_onnx(model, onnx_file_path, input_tdim=1024, frequency_bins
 
     # compute ONNX Runtime output prediction
     ort_inputs = {ort_session.get_inputs()[0].name: to_numpy(dummy_input)}
+    start = time.time()
     ort_outs = ort_session.run(None, ort_inputs)
+    end = time.time()
+    print(f"Inference of ONNX model used {end - start} seconds")
 
     # compare ONNX Runtime and PyTorch results
     np.testing.assert_allclose(to_numpy(torch_out), ort_outs[0], rtol=1e-03, atol=1e-05)
