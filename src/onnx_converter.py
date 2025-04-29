@@ -94,5 +94,5 @@ if __name__ == "__main__":
     # model.load_state_dict(state_dict)
 
     convert_model_to_onnx(
-        model, "ast_model_with_weights.onnx", input_tdim=1024, frequency_bins=128
+        model, "ast_model_29_april.onnx", input_tdim=1024, frequency_bins=128
     )

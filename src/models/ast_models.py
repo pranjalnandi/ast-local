@@ -294,6 +294,9 @@ class ASTModel(nn.Module):
         test_out = test_proj(test_input)
         f_dim = test_out.shape[2]
         t_dim = test_out.shape[3]
+        # print("test_out shape: ", test_out.shape)
+        # print("f_dim: ", f_dim)
+        # print("t_dim: ", t_dim)
         return f_dim, t_dim
 
     @autocast(device_type="cuda")
