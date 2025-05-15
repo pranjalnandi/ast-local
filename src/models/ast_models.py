@@ -307,7 +307,9 @@ class ASTModel(nn.Module):
         """
         # expect input x = (batch_size, time_frame_num, frequency_bins), e.g., (12, 1024, 128)
         x = x.unsqueeze(1)
+        # print("x shape after unsqueezing: ", x.shape)
         x = x.transpose(2, 3)
+        # print("x shape after transpose: ", x.shape)
 
         B = x.shape[0]
         x = self.v.patch_embed(x)

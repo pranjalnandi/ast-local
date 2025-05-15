@@ -6,8 +6,6 @@ import numpy as np
 import pyaudio
 import gdown
 from collections import deque
-from torch.amp import autocast
-from src.models import ASTModel
 from rich.console import Console
 from rich.table import Table
 from rich import print
@@ -78,47 +76,9 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
     return fbank
 
 
-# ----------------------------
-# Label Loading Function
-# ----------------------------
-def load_labels(label_csv):
-    """
-    Load class labels from a CSV file.
-    Assumes the CSV header exists and labels are in the third column.
-    """
-    with open(label_csv, "r") as f:
-        reader = csv.reader(f, delimiter=",")
-        lines = list(reader)
-    return [line[2] for line in lines[1:]]
-
-
-# ----------------------------
-# Prediction Function
-# ----------------------------
-def predict_segment(segment, model, device, labels):
-    """
-    Run inference on a given audio segment (a tensor of shape [1, N]).
-    Returns a formatted string of the top three predictions.
-    """
-    # Extract features (fbank) from the waveform segment
+def get_spectrogram(segment):
     feats = make_features(segment, SAMPLE_RATE, MEL_BINS)
-    # The model expects input shape [batch, time, frequency]
-    feats_data = feats.unsqueeze(0).to(device)
-
-    # Run inference using automatic mixed precision if available
-    with torch.no_grad():
-        with autocast(device_type="cuda"):
-            output = model(feats_data)
-            output = torch.sigmoid(output)
-
-    output_np = output.cpu().numpy()[0]
-    sorted_idxs = np.argsort(output_np)[::-1]
-
-    top_predictions = [
-        (labels[i], output_np[i]) for i in sorted_idxs[:TOTAL_PRINTED_PREDICTIONS]
-    ]
-
-    return top_predictions
+    return feats
 
 
 def download_model(model_url, checkpoint_path):
@@ -126,35 +86,7 @@ def download_model(model_url, checkpoint_path):
         gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
 
 
-# ----------------------------
-# Main Real-Time Inference Pipeline
-# ----------------------------
 def main():
-    if not os.path.exists("./pretrained_models"):
-        os.mkdir("./pretrained_models")
-
-    download_model(model_url=MODEL_URL, checkpoint_path=CHECKPOINT_PATH)
-
-    # Load the AST model
-    ast_model = ASTModel(
-        label_dim=LABEL_DIM,
-        input_tdim=INPUT_TDIM,
-        imagenet_pretrain=False,
-        audioset_pretrain=False,
-    )
-    print(f"[*INFO] Load checkpoint: {CHECKPOINT_PATH}")
-    checkpoint = torch.load(CHECKPOINT_PATH, map_location="cuda")
-    model = torch.nn.DataParallel(ast_model, device_ids=[0])
-    model.load_state_dict(checkpoint)
-    model = model.to(torch.device("cuda:0"))
-    model.eval()
-    print("Model loaded! :boom:")
-
-    # Load class labels
-    label_csv = "./egs/audioset/data/class_labels_indices.csv"
-    labels = load_labels(label_csv)
-    print("Labels loaded! :boom:")
-
     p = pyaudio.PyAudio()
     try:
         default_input_info = p.get_default_input_device_info()
@@ -191,10 +123,9 @@ def main():
                     torch.tensor(segment_np, dtype=torch.float32).unsqueeze(0) / 32768.0
                 )
 
-                predictions = predict_segment(
-                    segment_tensor, model, torch.device("cuda:0"), labels
-                )
-                display_predictions(predictions)
+                spectrogram = get_spectrogram(segment_tensor)
+                # display_predictions(predictions)
+                print("Spectrogram shape: ", spectrogram.shape)
 
                 # Remove the oldest samples to maintain an overlap (keep OVERLAP_SIZE samples)
                 for _ in range(HOP_SIZE):

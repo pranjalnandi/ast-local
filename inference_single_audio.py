@@ -126,9 +126,8 @@ def main(audio_file_name: str):
     audio_path = f"./sample_audios/{audio_file_name}"
 
     # Extract features
-    feats = make_features(audio_path, mel_bins=MEL_BINS)
-    feats_data = feats.expand(1, INPUT_TDIM, 128)
-    # feats_data = feats_data.unsqueeze(1)
+    feats = make_features(audio_path, mel_bins=MEL_BINS)  # feats-shape: (1024, 128)
+    feats_data = feats.expand(1, INPUT_TDIM, 128)  # feats_data-shape: (1, 1024, 128)
     feats_data = feats_data.to(torch.device("cuda:0"))
 
     # Make predictions
