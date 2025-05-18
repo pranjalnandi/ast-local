@@ -6,6 +6,14 @@ import json
 import base64
 from kafka import KafkaProducer
 import datetime
+from pathlib import Path
+
+
+INPUT_DIR = "./sample_audios/brushing_teeth"
+MEL_BINS = 128
+KAFKA_BOOTSTRAP = "localhost:9092"
+TOPIC = "spectrogram"
+SLEEP_SECS = 4
 
 
 def make_features(wav_name, mel_bins):
@@ -27,7 +35,7 @@ def make_features(wav_name, mel_bins):
     return fbank
 
 
-def serialize_tensor(tensor):
+def serialize_tensor(tensor, wav_path):
     """
     Serializes a PyTorch tensor to a JSON-compatible format.
     """
@@ -38,46 +46,43 @@ def serialize_tensor(tensor):
         "dtype": str(array.dtype),
         "data": data_b64,
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+        "filename": str(wav_path.name),
     }
     # data_b64 = base64.b64encode(array.tobytes()).decode("utf-8")
     # return {"shape": array.shape, "dtype": str(array.dtype), "data": data_b64}
 
 
 def main():
-    wav_names = [
-        "./sample_audios/cough.flac",
-        "./sample_audios/help.flac",
-        "./sample_audios/finger_snap_clap.flac",
-        "./sample_audios/clap_finger_snap.flac",
-    ]
-    mel_bins = 128
+    wav_paths = sorted(Path(INPUT_DIR).glob("*.flac"))
+    if not wav_paths:
+        print(f"No .flac files found in {INPUT_DIR}")
+        return
 
     producer = KafkaProducer(
-        bootstrap_servers="localhost:9092",
+        bootstrap_servers=KAFKA_BOOTSTRAP,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
-    topic = "spectrogram"
 
-    for wav in wav_names:
+    for wav_path in wav_paths:
         start_time = time.time()
-        print(f"Processing {wav}…")
+        print(f"Processing {wav_path.name}…")
 
-        fbank = make_features(wav, mel_bins=mel_bins)
+        fbank = make_features(str(wav_path), mel_bins=MEL_BINS)
         print("  Spectrogram shape:", fbank.shape)
 
-        message = serialize_tensor(fbank)
+        message = serialize_tensor(fbank, wav_path=wav_path)
         print("  Serialized done.")
 
-        producer.send(topic, value=message).add_callback(
+        producer.send(TOPIC, value=message).add_callback(
             lambda md: print(f"Sent to {md.topic}-{md.partition}@{md.offset}")
         ).add_errback(lambda e: print(f"Error: {e}"))
-        # producer.send(topic, value=message)
-        print(f"  Sent {wav} features to Kafka topic '{topic}'.")
+
+        print(f"  Sent {wav_path.name} features to Kafka topic '{TOPIC}'.")
 
         elapsed = time.time() - start_time
         print(f"  Time taken: {elapsed:.3f} s")
         print("=" * 40)
-        time.sleep(4)
+        time.sleep(SLEEP_SECS)
 
     producer.flush()
     producer.close()

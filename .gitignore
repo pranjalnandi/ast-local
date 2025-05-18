@@ -16,3 +16,7 @@ src/test_wget.py
 src/ast_model.onnx
 /whl_files
 src/*.onnx
+# sample_audios/brushing_teeth
+# sample_audios/door_wood_creaks
+# sample_audios/experiments
+# sample_audios/toilet_flush

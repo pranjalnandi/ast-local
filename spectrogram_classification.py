@@ -126,6 +126,7 @@ def main():
                 fbank = torch.tensor(arr, device=device)
 
                 timestamp = raw.get("timestamp", None)
+                wav_path = raw.get("filename", None)
             except Exception as e:
                 console.log(
                     f"Failed to deserialize message at offset {msg.offset}: {e}"
@@ -145,7 +146,7 @@ def main():
             topk = [(labels[i], float(probs[i])) for i in topk_idx]
 
             console.print(
-                f"\n📨 Msg offset={msg.offset}  (at={timestamp}) → Top {TOP_K} predictions:"
+                f"\n📨 Msg offset={msg.offset} (File name={wav_path}) (at={timestamp}) → Top {TOP_K} predictions:"
             )
             display_predictions(topk)
 
