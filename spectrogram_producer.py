@@ -5,6 +5,7 @@ import numpy as np
 import json
 import base64
 from kafka import KafkaProducer
+import datetime
 
 
 def make_features(wav_name, mel_bins):
@@ -32,7 +33,14 @@ def serialize_tensor(tensor):
     """
     array = tensor.numpy()
     data_b64 = base64.b64encode(array.tobytes()).decode("utf-8")
-    return {"shape": array.shape, "dtype": str(array.dtype), "data": data_b64}
+    return {
+        "shape": array.shape,
+        "dtype": str(array.dtype),
+        "data": data_b64,
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+    # data_b64 = base64.b64encode(array.tobytes()).decode("utf-8")
+    # return {"shape": array.shape, "dtype": str(array.dtype), "data": data_b64}
 
 
 def main():

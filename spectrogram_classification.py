@@ -119,12 +119,13 @@ def main():
 
             # deserialize tensor
             try:
-                # fbank = deserialize_tensor(raw)
                 data_bytes = base64.b64decode(raw["data"])
                 arr = np.frombuffer(data_bytes, dtype=raw["dtype"]).reshape(
                     raw["shape"]
                 )
                 fbank = torch.tensor(arr, device=device)
+
+                timestamp = raw.get("timestamp", None)
             except Exception as e:
                 console.log(
                     f"Failed to deserialize message at offset {msg.offset}: {e}"
@@ -143,7 +144,9 @@ def main():
             topk_idx = torch.topk(probs, TOP_K).indices.cpu().numpy()
             topk = [(labels[i], float(probs[i])) for i in topk_idx]
 
-            console.print(f"\n📨 Msg offset={msg.offset} → Top {TOP_K} predictions:")
+            console.print(
+                f"\n📨 Msg offset={msg.offset}  (at={timestamp}) → Top {TOP_K} predictions:"
+            )
             display_predictions(topk)
 
             consumer.commit()
