@@ -10,9 +10,10 @@ import csv
 from rich.console import Console
 from rich.table import Table
 from src.models import ASTModel
+import sqlite3
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-BOOTSTRAP = "localhost:9092"
+BOOTSTRAP = "172.16.2.13:9092"
 TOPIC = "spectrogram"
 GROUP_ID = "spectrogram_consumers"
 
@@ -25,6 +26,11 @@ CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/audio_mdl.pth"
 MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
 LABEL_CSV = "./egs/audioset/data/class_labels_indices.csv"
 TOP_K = 5
+
+DB_PATH = "/home/tami1/audio_app/predictions.db"
+TABLE = "preds"
+db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+db_cursor = db_conn.cursor()
 
 console = Console()
 
@@ -145,6 +151,13 @@ def main():
             topk_idx = torch.topk(probs, TOP_K).indices.cpu().numpy()
             topk = [(labels[i], float(probs[i])) for i in topk_idx]
 
+            l1, l2, l3 = topk[0][0], topk[1][0], topk[2][0]
+            db_cursor.execute(
+                f"INSERT INTO {TABLE} (timestamp, label1, label2, label3) VALUES (?, ?, ?, ?)",
+                (timestamp, l1, l2, l3),
+            )
+            db_conn.commit()
+
             console.print(
                 f"\n📨 Msg offset={msg.offset} (File name={wav_path}) (at={timestamp}) → Top {TOP_K} predictions:"
             )
@@ -155,6 +168,7 @@ def main():
         console.log("Consumer interrupted. Exiting...")
     finally:
         consumer.close()
+        db_conn.close()
         console.log("Consumer closed.")
         console.log("Bye! 👋")
 

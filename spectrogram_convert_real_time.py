@@ -1,13 +1,9 @@
-import os
-import csv
 import torch
 import torchaudio
 import numpy as np
 import pyaudio
-import gdown
 from collections import deque
 from rich.console import Console
-from rich.table import Table
 from rich import print
 import json
 import base64
@@ -18,10 +14,6 @@ import datetime
 # Configuration and Constants
 # ----------------------------
 INPUT_TDIM = 1024
-LABEL_DIM = 527
-CHECKPOINT_PATH = "./pretrained_models/audio_mdl.pth"
-MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
-TOTAL_PRINTED_PREDICTIONS = 3
 
 SAMPLE_RATE = 16000
 CHUNK_DURATION = 5

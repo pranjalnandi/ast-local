@@ -9,9 +9,9 @@ import datetime
 from pathlib import Path
 
 
-INPUT_DIR = "./sample_audios/brushing_teeth"
+INPUT_DIR = "./sample_audios/experiments/door_flush_door"
 MEL_BINS = 128
-KAFKA_BOOTSTRAP = "localhost:9092"
+KAFKA_BOOTSTRAP = "172.16.2.13:9092"
 TOPIC = "spectrogram"
 SLEEP_SECS = 4
 
