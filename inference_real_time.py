@@ -11,6 +11,7 @@ from src.models import ASTModel
 from rich.console import Console
 from rich.table import Table
 from rich import print
+import matplotlib.pyplot as plt
 
 # ----------------------------
 # Configuration and Constants
@@ -29,11 +30,15 @@ OVERLAP_SIZE = int(CHUNK_SIZE * OVERLAP_PERCENT)
 HOP_SIZE = CHUNK_SIZE - OVERLAP_SIZE  # New samples added each time
 MEL_BINS = 128  # Number of Mel filter bank bins
 
+
+SPECTROGRAM_FOLDER = "./spectrograms"
+os.makedirs(SPECTROGRAM_FOLDER, exist_ok=True)
+
 console = Console()
 
 
-def display_predictions(predictions):
-    table = Table(title=f"Predictions")
+def display_predictions(predictions, chunk_counter):
+    table = Table(title=f"Predictions - Chunk {chunk_counter}")
 
     table.add_column("Rank", justify="center", style="cyan", no_wrap=True)
     table.add_column("Label", style="yellow")
@@ -126,6 +131,29 @@ def download_model(model_url, checkpoint_path):
         gdown.download(model_url, checkpoint_path, quiet=False, fuzzy=True)
 
 
+def save_mel_spectrogram(waveform_np, sample_rate, folder, idx):
+    # Convert to float waveform in [-1,1]
+    waveform = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0) / 32768.0
+    # Compute Mel-filterbank features without normalization or padding
+    fbank = torchaudio.compliance.kaldi.fbank(
+        waveform,
+        htk_compat=True,
+        sample_frequency=sample_rate,
+        use_energy=False,
+        window_type="hanning",
+        num_mel_bins=MEL_BINS,
+        dither=0.0,
+        frame_shift=10,
+    )
+    mel_spec = fbank.numpy().T  # shape [bins, frames]
+    plt.figure(figsize=(6, 4))
+    plt.imshow(mel_spec, origin="lower", aspect="auto")
+    plt.axis("off")
+    out_path = os.path.join(folder, f"mel_chunk_{idx:05d}.png")
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=0)
+    plt.close()
+
+
 # ----------------------------
 # Main Real-Time Inference Pipeline
 # ----------------------------
@@ -177,6 +205,7 @@ def main():
     print("Listening... Press Ctrl+C to stop.")
 
     audio_buffer = deque(maxlen=CHUNK_SIZE)
+    chunk_counter = 0
 
     try:
         while True:
@@ -187,6 +216,10 @@ def main():
             # When we have accumulated enough samples, process this segment
             if len(audio_buffer) >= CHUNK_SIZE:
                 segment_np = np.array(audio_buffer, dtype=np.int16)
+
+                save_mel_spectrogram(
+                    segment_np, SAMPLE_RATE, SPECTROGRAM_FOLDER, chunk_counter
+                )
                 # Normalize to [-1, 1] (16-bit PCM normalization)
                 segment_tensor = (
                     torch.tensor(segment_np, dtype=torch.float32).unsqueeze(0) / 32768.0
@@ -195,7 +228,8 @@ def main():
                 predictions = predict_segment(
                     segment_tensor, model, torch.device("cuda:0"), labels
                 )
-                display_predictions(predictions)
+                display_predictions(predictions, chunk_counter)
+                chunk_counter += 1
 
                 # Remove the oldest samples to maintain an overlap (keep OVERLAP_SIZE samples)
                 for _ in range(HOP_SIZE):
