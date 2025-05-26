@@ -46,6 +46,16 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
         dither=0.0,
         frame_shift=10,
     )
+    # n_frames = fbank.shape[0]
+    # p = target_length - n_frames
+    # if p > 0:
+    #     pad = torch.nn.ZeroPad2d((0, 0, 0, p))
+    #     fbank = pad(fbank)
+    # elif p < 0:
+    #     fbank = fbank[:target_length, :]
+
+    # Normalize using constants from training
+    # fbank = (fbank - (-4.2677393)) / (4.5689974 * 2)
     return fbank
 
 
@@ -90,7 +100,8 @@ def main():
 
     print("Listening... Press Ctrl+C to stop.")
 
-    audio_buffer = deque(maxlen=CHUNK_SIZE)
+    # audio_buffer = deque(maxlen=CHUNK_SIZE)
+    audio_buffer = deque()
 
     try:
         while True:
@@ -100,6 +111,12 @@ def main():
 
             # When we have accumulated enough samples, process this segment
             if len(audio_buffer) >= CHUNK_SIZE:
+                segment = [audio_buffer.popleft() for _ in range(CHUNK_SIZE)]
+                # Keep the last OVERLAP_SIZE samples for the next chunk
+                overlap = segment[-OVERLAP_SIZE:]
+                audio_buffer.clear()
+                audio_buffer.extend(overlap)
+
                 segment_np = np.array(audio_buffer, dtype=np.int16)
                 # Normalize to [-1, 1] (16-bit PCM normalization)
                 segment_tensor = (
@@ -114,8 +131,12 @@ def main():
                 ).add_errback(lambda e: console.log(f"Send error: {e}"))
 
                 # Remove the oldest samples to maintain an overlap (keep OVERLAP_SIZE samples)
-                for _ in range(HOP_SIZE):
-                    audio_buffer.popleft()
+                # for _ in range(HOP_SIZE):
+                #     audio_buffer.popleft()
+                # now rebuild buffer to keep only overlap
+                # overlap_data = list(audio_buffer)[-OVERLAP_SIZE:]
+                # audio_buffer.clear()
+                # audio_buffer.extend(overlap_data)
     except KeyboardInterrupt:
         print("Stopping...")
     finally:

@@ -160,6 +160,7 @@ def main():
         default_input_info = p.get_default_input_device_info()
         input_device_index = default_input_info["index"]
         print("Using input device:", default_input_info["name"])
+        print("Input device index:", input_device_index)
     except Exception as e:
         print("Error getting default input device:", e)
         return

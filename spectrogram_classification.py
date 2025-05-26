@@ -2,7 +2,6 @@ from kafka import KafkaConsumer
 import json, base64
 import numpy as np
 import torch
-import torchaudio
 from torch.amp import autocast
 import gdown
 import os
@@ -27,7 +26,7 @@ MODEL_URL = "https://www.dropbox.com/s/cv4knew8mvbrnvq/audioset_0.4593.pth?dl=1"
 LABEL_CSV = "./egs/audioset/data/class_labels_indices.csv"
 TOP_K = 5
 
-DB_PATH = "/home/tami1/audio_app/predictions.db"
+DB_PATH = "/home/pranjal/audio-app/predictions.db"
 TABLE = "preds"
 db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 db_cursor = db_conn.cursor()
@@ -152,11 +151,25 @@ def main():
             topk = [(labels[i], float(probs[i])) for i in topk_idx]
 
             l1, l2, l3 = topk[0][0], topk[1][0], topk[2][0]
-            db_cursor.execute(
-                f"INSERT INTO {TABLE} (timestamp, label1, label2, label3) VALUES (?, ?, ?, ?)",
-                (timestamp, l1, l2, l3),
-            )
-            db_conn.commit()
+            c1, c2, c3 = topk[0][1], topk[1][1], topk[2][1]
+            # save to db if only l1,l2 or l3 contains "door", "Toilet Flush" or "Electric Toothbrush"
+            if (
+                "Door" in l1
+                or "Door" in l2
+                or "Door" in l3
+                or "Toilet flush" in l1
+                or "Toilet flush" in l2
+                or "Toilet flush" in l3
+                or "Electric toothbrush" in l1
+                or "Electric toothbrush" in l2
+                or "Electric toothbrush" in l3
+            ):
+                console.log("Saving to DB...")
+                db_cursor.execute(
+                    f"INSERT INTO {TABLE} (timestamp, label1, label2, label3, conf1, conf2, conf3) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (timestamp, l1, l2, l3, c1, c2, c3),
+                )
+                db_conn.commit()
 
             console.print(
                 f"\n📨 Msg offset={msg.offset} (File name={wav_path}) (at={timestamp}) → Top {TOP_K} predictions:"
