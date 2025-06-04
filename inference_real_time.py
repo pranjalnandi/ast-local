@@ -1,17 +1,20 @@
-import os
 import csv
-import torch
-import torchaudio
+import os
+import zlib
+from collections import deque
+
+import gdown
+import matplotlib.pyplot as plt
 import numpy as np
 import pyaudio
-import gdown
-from collections import deque
-from torch.amp import autocast
-from src.models import ASTModel
+import torch
+import torchaudio
+from rich import print
 from rich.console import Console
 from rich.table import Table
-from rich import print
-import matplotlib.pyplot as plt
+from torch.amp import autocast
+
+from src.models import ASTModel
 
 # ----------------------------
 # Configuration and Constants
@@ -60,7 +63,7 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
     """
     assert sr == SAMPLE_RATE, "Input audio sampling rate must be 16kHz"
 
-    fbank = torchaudio.compliance.kaldi.fbank(
+    fbank_32 = torchaudio.compliance.kaldi.fbank(
         waveform,
         htk_compat=True,
         sample_frequency=sr,
@@ -70,6 +73,27 @@ def make_features(waveform, sr, mel_bins, target_length=INPUT_TDIM):
         dither=0.0,
         frame_shift=10,
     )
+    # convert to float16
+    fbank_fp16 = fbank_32.to(torch.float16)
+
+    size_kb = (fbank_fp16.numel() * fbank_fp16.element_size()) / 1024
+    print(f"Feature size: {fbank_fp16.shape}, Size in KB: {size_kb:.2f} KB")
+
+    # Convert to bytes and compress using zlib
+    arr_bytes = fbank_fp16.cpu().numpy().tobytes()
+    compressed = zlib.compress(arr_bytes, level=6)
+
+    size_bytes = len(compressed)
+    print(f"Compressed size in KB: {size_bytes / 1024:.2f} KB")
+
+    # Decompress the data and convert back to float16
+    decompressed = zlib.decompress(compressed)
+    fbank_recon = np.frombuffer(decompressed, dtype=np.float16).reshape(
+        fbank_fp16.shape
+    )
+
+    fbank = torch.tensor(fbank_recon, dtype=torch.float16)
+
     n_frames = fbank.shape[0]
     p = target_length - n_frames
     if p > 0:

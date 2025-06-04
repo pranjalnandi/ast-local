@@ -1,14 +1,16 @@
-import os
 import csv
-import torch
-import torchaudio
+import os
+from collections import deque
+
 import numpy as np
 import pyaudio
-from collections import deque
-from torch.amp import autocast
-from src.models import ASTModel
+import torch
+import torchaudio
 from rich.console import Console
 from rich.table import Table
+from torch.amp import autocast
+
+from src.models import ASTModel
 
 # ----------------------------
 # Configuration and Constants

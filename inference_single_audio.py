@@ -1,14 +1,16 @@
-import os
 import csv
+import os
+import zlib
+
+import gdown
+import numpy as np
 import torch
 import torchaudio
-import numpy as np
-from torch.amp import autocast
-import gdown
-from rich.console import Console
-from rich.table import Table
 import typer
 from rich import print
+from rich.console import Console
+from rich.table import Table
+from torch.amp import autocast
 
 from src.models import ASTModel
 
@@ -41,7 +43,7 @@ def make_features(wav_name, mel_bins, target_length=1024):
     waveform, sr = torchaudio.load(wav_name)
     assert sr == 16000, "Input audio sampling rate must be 16kHz"
     print("waveform shape: ", torch._shape_as_tensor(waveform))
-    fbank = torchaudio.compliance.kaldi.fbank(
+    fbank_32 = torchaudio.compliance.kaldi.fbank(
         waveform,
         htk_compat=True,
         sample_frequency=sr,
@@ -52,17 +54,38 @@ def make_features(wav_name, mel_bins, target_length=1024):
         frame_shift=10,
         frame_length=25,
     )
+    # convert to float16
+    fbank_fp16 = fbank_32.to(torch.float16)
+
+    size_kb = (fbank_fp16.numel() * fbank_fp16.element_size()) / 1024
+    print(f"Feature size: {fbank_fp16.shape}, Size in KB: {size_kb:.2f} KB")
+
+    # Convert to bytes and compress using zlib
+    arr_bytes = fbank_fp16.cpu().numpy().tobytes()
+    compressed = zlib.compress(arr_bytes, level=6)
+
+    size_bytes = len(compressed)
+    print(f"Compressed size in KB: {size_bytes / 1024:.2f} KB")
+
+    # Decompress the data and convert back to float16
+    decompressed = zlib.decompress(compressed)
+    fbank_recon = np.frombuffer(decompressed, dtype=np.float16).reshape(
+        fbank_fp16.shape
+    )
+
+    fbank = torch.tensor(fbank_recon, dtype=torch.float16)
+
     n_frames = fbank.shape[0]
     p = target_length - n_frames
 
     print("fbank shape: ", torch._shape_as_tensor(fbank))
-    # print("fbank: ", fbank[20:30, 20:30])
     print("Number of positive values: ", torch.count_nonzero(fbank > 0))
+    # print("fbank: ", fbank[20:30, 20:30])
     # print(
     #     "Indices of positive values: ", torch.nonzero(fbank > 0, as_tuple=False)[0:10]
     # )
-    print("number of frames: ", n_frames)
-    print("padding: ", p)
+    # print("number of frames: ", n_frames)
+    # print("padding: ", p)
 
     if p > 0:
         m = torch.nn.ZeroPad2d((0, 0, 0, p))
@@ -70,11 +93,10 @@ def make_features(wav_name, mel_bins, target_length=1024):
     elif p < 0:
         fbank = fbank[0:target_length, :]
     fbank = (fbank - (-4.2677393)) / (4.5689974 * 2)
-    print(
-        "Number of positive values after padding and normalization: ",
-        torch.count_nonzero(fbank > 0),
-    )
-    # print("fbank element: ", fbank[500:502, :])
+    # print(
+    #     "Number of positive values after padding and normalization: ",
+    #     torch.count_nonzero(fbank > 0),
+    # )
     return fbank
 
 
@@ -135,7 +157,6 @@ def main(audio_file_name: str):
         with autocast(device_type="cuda"):
             output = audio_model.forward(feats_data)
             output = torch.sigmoid(output)
-            print("Sum of all elements in output: ", torch.sum(output))
 
     result_output = output.data.cpu().numpy()[0]
     sorted_indexes = np.argsort(result_output)[::-1]

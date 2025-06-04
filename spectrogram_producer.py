@@ -1,13 +1,14 @@
-import torchaudio
-import torch
-import time
-import numpy as np
-import json
 import base64
-from kafka import KafkaProducer
 import datetime
+import json
+import time
 from pathlib import Path
 
+import numpy as np
+import torch
+import torchaudio
+
+from kafka import KafkaProducer
 
 INPUT_DIR = "./sample_audios/experiments/door_flush_door"
 MEL_BINS = 128

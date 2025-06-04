@@ -1,17 +1,18 @@
+import csv
 import os
+import time
+
+import gdown
+import numpy as np
 import torch
 import torchaudio
-import numpy as np
-import time
-from torch.amp import autocast
-from src.models import ASTModel
-import csv
 import typer
-import gdown
-
+from rich import print
 from rich.console import Console
 from rich.table import Table
-from rich import print
+from torch.amp import autocast
+
+from src.models import ASTModel
 
 INPUT_TDIM = 1024
 LABEL_DIM = 527
@@ -29,6 +30,7 @@ MEL_BINS = 128  # Number of Mel filter bank bins
 
 
 console = Console()
+
 
 def display_predictions(segment_number, predictions):
     table = Table(title=f"Segment {segment_number} Predictions")
@@ -108,7 +110,7 @@ def main(audio_file_name: str):
     audio_model = audio_model.to(torch.device("cuda:0"))
     audio_model.eval()
     print("Model loaded! :boom:")
- 
+
     # Load labels
     label_csv = "./egs/audioset/data/class_labels_indices.csv"
     labels = load_label(label_csv)
@@ -156,7 +158,6 @@ def main(audio_file_name: str):
         ]
 
         display_predictions(i + 1, top_predictions)
-        
 
         end_time = time.time()
 

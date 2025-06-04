@@ -1,8 +1,10 @@
-from kafka import KafkaConsumer
-import json
 import base64
+import json
+
 import numpy as np
 import torch
+
+from kafka import KafkaConsumer
 
 
 def deserialize_tensor(message):

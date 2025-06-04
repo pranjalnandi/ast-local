@@ -1,15 +1,18 @@
-from kafka import KafkaConsumer
-import json, base64
+import base64
+import csv
+import json
+import os
+import sqlite3
+
+import gdown
 import numpy as np
 import torch
-from torch.amp import autocast
-import gdown
-import os
-import csv
 from rich.console import Console
 from rich.table import Table
+from torch.amp import autocast
+
+from kafka import KafkaConsumer
 from src.models import ASTModel
-import sqlite3
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 BOOTSTRAP = "172.16.2.13:9092"

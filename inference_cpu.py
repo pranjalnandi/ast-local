@@ -1,12 +1,14 @@
+import csv
 import os
 import sys
-import csv
+import time
+
+import gdown
+import numpy as np
 import torch
 import torchaudio
-import numpy as np
-import gdown
+
 from src.models import ASTModel
-import time
 
 
 # Function to set up the environment

@@ -1,14 +1,16 @@
-import torch
-import torchaudio
+import base64
+import datetime
+import json
+from collections import deque
+
 import numpy as np
 import pyaudio
-from collections import deque
-from rich.console import Console
+import torch
+import torchaudio
 from rich import print
-import json
-import base64
+from rich.console import Console
+
 from kafka import KafkaProducer
-import datetime
 
 # ----------------------------
 # Configuration and Constants
